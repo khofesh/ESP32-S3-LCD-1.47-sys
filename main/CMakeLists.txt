@@ -7,8 +7,10 @@ idf_component_register(
                               "SD_Card/SD_MMC.c"
                               "RGB/RGB.c"
                               "Wireless/Wireless.c"
+                              "Sysmon/sysmon.c"
 
-                         INCLUDE_DIRS 
+                         INCLUDE_DIRS
+                              "./Sysmon"
                               "./LCD_Driver/Vernon_ST7789T" 
                               "./LCD_Driver" 
                               "./LVGL_Driver" 

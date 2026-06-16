@@ -1,0 +1,5 @@
+psutil
+pyserial
+# Optional, only needed for the GPU field on NVIDIA hosts:
+#   pip install nvidia-ml-py
+# (imported as `pynvml`; the agent degrades gracefully if it is absent)

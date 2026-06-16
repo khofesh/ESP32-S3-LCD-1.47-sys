@@ -69,10 +69,10 @@ esp_err_t esp_lcd_new_panel_st7789t(const esp_lcd_panel_io_handle_t io, const es
     }
 
     switch (panel_dev_config->rgb_endian) {
-    case LCD_RGB_ENDIAN_RGB:
+    case LCD_RGB_ELEMENT_ORDER_RGB:
         st7789t->madctl_val = 0;
         break;
-    case LCD_RGB_ENDIAN_BGR:
+    case LCD_RGB_ELEMENT_ORDER_BGR:
         st7789t->madctl_val |= LCD_CMD_BGR_BIT;
         break;
     default:
