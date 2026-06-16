@@ -27,9 +27,15 @@
     "sd_mmc.h": "c"
   },
   "idf.adapterTargetName": "esp32s3",
-  "idf.openOcdConfigs": ["board/esp32s3-builtin.cfg"],
+  "idf.openOcdConfigs": [
+    "board/esp32s3-builtin.cfg"
+  ],
   "idf.portWin": "COM13",
   "idf.flashType": "UART",
   "idf.currentSetup": "/home/fahmad/esp/esp-idf",
-  "idf.port": "/dev/ttyACM0"
+  "idf.port": "/dev/ttyACM0",
+  "idf.customExtraVars": {
+    "OPENOCD_USB_ADAPTER_LOCATION": "1-1",
+    "IDF_TARGET": "esp32s3"
+  }
 }
