@@ -84,6 +84,8 @@ OpenHardwareMonitor as a compatible fallback.
 
 Start LibreHardwareMonitor before running the agent. If `TMP` stays 0, run
 LibreHardwareMonitor as Administrator and confirm its WMI interface is enabled.
+The Windows temperature reader polls WMI in the background, so the first few
+samples can show `TMP:0` before the initial query completes.
 
 ### macOS
 

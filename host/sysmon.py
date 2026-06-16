@@ -51,12 +51,16 @@ WINDOWS_TEMP_SCRIPT = r"""
 $namespaces = @('root\LibreHardwareMonitor', 'root\OpenHardwareMonitor')
 foreach ($ns in $namespaces) {
     try {
-        $sensors = Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction Stop |
-            Where-Object {
-                $_.SensorType -eq 'Temperature' -and
-                ($_.Identifier -match '/(intelcpu|amdcpu|cpu)/' -or
-                 $_.Name -match 'CPU|Package|Tctl|Tdie|Core')
-            }
+        if (Get-Command Get-WmiObject -ErrorAction SilentlyContinue) {
+            $allSensors = Get-WmiObject -Namespace $ns -Class Sensor -ErrorAction Stop
+        } else {
+            $allSensors = Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction Stop
+        }
+        $sensors = $allSensors | Where-Object {
+            $_.SensorType -eq 'Temperature' -and
+            ($_.Identifier -match '/(intelcpu|amdcpu|cpu)/' -or
+             $_.Name -match 'CPU|Package|Tctl|Tdie|Core')
+        }
         if ($sensors) {
             $sensor = $sensors |
                 Sort-Object `
@@ -223,22 +227,46 @@ def _cmd_temp(cmd):
 
 def _windows_temp_reader():
     """CPU temperature in °C on Windows via Libre/OpenHardwareMonitor WMI."""
-    shell = shutil.which("pwsh") or shutil.which("powershell")
+    shell = shutil.which("powershell") or shutil.which("pwsh")
     if not shell:
         print("no Windows PowerShell found; TMP will report 0", file=sys.stderr)
         return lambda: 0
 
-    reader = _cmd_temp([shell, "-NoProfile", "-ExecutionPolicy", "Bypass",
-                        "-Command", WINDOWS_TEMP_SCRIPT])
-    if reader() > 0:
-        print("using Windows CPU temp source: Libre/OpenHardwareMonitor WMI",
-              file=sys.stderr)
-        return reader
+    cmd = [shell, "-NoProfile", "-ExecutionPolicy", "Bypass",
+           "-Command", WINDOWS_TEMP_SCRIPT]
+    lock = threading.Lock()
+    state = {"temp": 0, "started": False, "announced": False}
 
-    print("no Windows CPU temp source found; start LibreHardwareMonitor with "
-          "WMI enabled (or OpenHardwareMonitor); TMP will report 0",
-          file=sys.stderr)
-    return lambda: 0
+    def poll():
+        while True:
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True,
+                                      timeout=10)
+                m = re.search(r"-?\d+(?:\.\d+)?", proc.stdout)
+                temp = int(float(m.group())) if proc.returncode == 0 and m else 0
+            except (OSError, subprocess.SubprocessError):
+                temp = 0
+
+            if temp > 0:
+                with lock:
+                    state["temp"] = temp
+                    if not state["announced"]:
+                        print("using Windows CPU temp source: "
+                              "Libre/OpenHardwareMonitor WMI", file=sys.stderr)
+                        state["announced"] = True
+            time.sleep(5)
+
+    def read():
+        with lock:
+            if not state["started"]:
+                t = threading.Thread(target=poll, daemon=True)
+                t.start()
+                state["started"] = True
+                print("polling Windows CPU temp source: "
+                      "Libre/OpenHardwareMonitor WMI", file=sys.stderr)
+            return state["temp"]
+
+    return read
 
 
 def _dedupe_commands(commands):
