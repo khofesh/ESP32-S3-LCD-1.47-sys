@@ -101,7 +101,7 @@ same helper should also be found when the script is started by `launchd`. You ca
 override the helper with `SYSMON_TEMP_CMD`, for example:
 
 ```sh
-SYSMON_TEMP_CMD="/opt/homebrew/bin/macmon pipe -s 1 -i 1000" python3 host/sysmon.py
+SYSMON_TEMP_CMD="/opt/homebrew/bin/macmon pipe -i 1000" python3 host/sysmon.py
 ```
 
 If `osx-cpu-temp` prints `0.0°C`, it is not a usable temperature source on that

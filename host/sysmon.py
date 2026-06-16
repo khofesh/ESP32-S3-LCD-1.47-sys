@@ -22,6 +22,7 @@ import json
 import shutil
 import platform
 import argparse
+import threading
 import subprocess
 
 import psutil
@@ -31,10 +32,10 @@ import serial.tools.list_ports
 ESPRESSIF_VID = 0x303A
 BAUD = 115200
 MACMON_COMMANDS = (
-    ("macmon", "pipe", "-s", "1", "-i", "1000"),
-    ("/opt/homebrew/bin/macmon", "pipe", "-s", "1", "-i", "1000"),
-    ("/usr/local/bin/macmon", "pipe", "-s", "1", "-i", "1000"),
-    ("/opt/local/bin/macmon", "pipe", "-s", "1", "-i", "1000"),
+    ("macmon", "pipe", "-i", "1000"),
+    ("/opt/homebrew/bin/macmon", "pipe", "-i", "1000"),
+    ("/usr/local/bin/macmon", "pipe", "-i", "1000"),
+    ("/opt/local/bin/macmon", "pipe", "-i", "1000"),
 )
 MAC_TEMP_COMMANDS = (
     ("osx-cpu-temp",),
@@ -130,23 +131,48 @@ def _cmd_path(cmd):
 
 
 def _macmon_temp(cmd):
-    """Build a reader for `macmon pipe` JSON output."""
-    def read():
+    """Build a reader backed by a persistent `macmon pipe` process."""
+    lock = threading.Lock()
+    state = {"temp": 0, "proc": None}
+
+    def update_temp(line):
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=4)
-        except (OSError, subprocess.SubprocessError) as e:
-            print(f"temperature command failed ({cmd[0]}): {e}", file=sys.stderr)
-            return 0
-        if proc.returncode != 0:
-            err = proc.stderr.strip() or proc.stdout.strip()
-            print(f"temperature command failed ({cmd[0]}): {err}", file=sys.stderr)
-            return 0
-        try:
-            payload = json.loads(proc.stdout.strip().splitlines()[-1])
+            payload = json.loads(line)
             temp = int(float(payload["temp"]["cpu_temp_avg"]))
-        except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-            return 0
-        return temp if temp > 0 else 0
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return
+        if temp > 0:
+            with lock:
+                state["temp"] = temp
+
+    def pump(proc):
+        if proc.stdout is None:
+            return
+        for line in proc.stdout:
+            update_temp(line)
+
+    def start():
+        with lock:
+            proc = state["proc"]
+            if proc is not None and proc.poll() is None:
+                return
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True,
+                                    bufsize=1)
+        except OSError as e:
+            print(f"temperature command failed ({cmd[0]}): {e}", file=sys.stderr)
+            return
+        with lock:
+            state["proc"] = proc
+        t = threading.Thread(target=pump, args=(proc,), daemon=True)
+        t.start()
+
+    def read():
+        start()
+        with lock:
+            return state["temp"]
+    start()
     return read
 
 
@@ -211,6 +237,9 @@ def make_temp_reader():
             found.append(" ".join(cmd))
             if os.path.basename(cmd[0]) == "macmon":
                 reader = _macmon_temp(cmd)
+                print(f"using macOS CPU temp source: {' '.join(cmd)}",
+                      file=sys.stderr)
+                return reader
             else:
                 reader = _cmd_temp(cmd)
             if reader() > 0:
