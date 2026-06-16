@@ -81,11 +81,31 @@ systemctl --user enable --now usb-sysmon.service
 No `dialout` step — the board appears as `/dev/cu.usbmodem*` and opens without
 extra permissions. `psutil` has no temperature sensors on macOS, so the agent
 reads CPU temp from a CLI helper if one is installed, otherwise `TMP` reports 0
-(all other stats stream normally):
+(all other stats stream normally).
+
+On Apple Silicon, use `macmon`; it reports average CPU temperature without sudo:
+
+```sh
+brew install macmon
+```
+
+Intel Macs can use `osx-cpu-temp` or `iStats`:
 
 ```sh
 brew install osx-cpu-temp     # or: gem install iStats
 ```
+
+Homebrew installs are checked in the normal shell `PATH` plus the common
+`/opt/homebrew/bin`, `/usr/local/bin`, and `/opt/local/bin` locations, so the
+same helper should also be found when the script is started by `launchd`. You can
+override the helper with `SYSMON_TEMP_CMD`, for example:
+
+```sh
+SYSMON_TEMP_CMD="/opt/homebrew/bin/macmon pipe -s 1 -i 1000" python3 host/sysmon.py
+```
+
+If `osx-cpu-temp` prints `0.0°C`, it is not a usable temperature source on that
+machine. The agent treats that as unavailable and tries the next helper.
 
 Auto-start with the `launchd` agent (edit the `sysmon.py` path inside the plist
 first):

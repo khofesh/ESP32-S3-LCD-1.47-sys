@@ -14,8 +14,11 @@ board being unplugged/replugged via a reconnect loop.
 """
 
 import re
+import os
 import sys
 import time
+import shlex
+import json
 import shutil
 import platform
 import argparse
@@ -27,6 +30,22 @@ import serial.tools.list_ports
 
 ESPRESSIF_VID = 0x303A
 BAUD = 115200
+MACMON_COMMANDS = (
+    ("macmon", "pipe", "-s", "1", "-i", "1000"),
+    ("/opt/homebrew/bin/macmon", "pipe", "-s", "1", "-i", "1000"),
+    ("/usr/local/bin/macmon", "pipe", "-s", "1", "-i", "1000"),
+    ("/opt/local/bin/macmon", "pipe", "-s", "1", "-i", "1000"),
+)
+MAC_TEMP_COMMANDS = (
+    ("osx-cpu-temp",),
+    ("/opt/homebrew/bin/osx-cpu-temp",),
+    ("/usr/local/bin/osx-cpu-temp",),
+    ("/opt/local/bin/osx-cpu-temp",),
+    ("istats", "cpu", "temp", "--value-only"),
+    ("/opt/homebrew/bin/istats", "cpu", "temp", "--value-only"),
+    ("/usr/local/bin/istats", "cpu", "temp", "--value-only"),
+    ("/opt/local/bin/istats", "cpu", "temp", "--value-only"),
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -101,17 +120,65 @@ def _linux_temp():
     return int(src[0].current) if src else 0
 
 
-def _cmd_temp(cmd):
-    """Build a reader that runs `cmd` and parses the first number as °C."""
+def _cmd_path(cmd):
+    """Return a runnable absolute/path-resolved command, or None if unavailable."""
+    exe = cmd[0]
+    if os.path.isabs(exe):
+        return list(cmd) if os.access(exe, os.X_OK) else None
+    path = shutil.which(exe)
+    return [path, *cmd[1:]] if path else None
+
+
+def _macmon_temp(cmd):
+    """Build a reader for `macmon pipe` JSON output."""
     def read():
         try:
-            out = subprocess.run(cmd, capture_output=True, text=True,
-                                 timeout=2).stdout
-        except (OSError, subprocess.SubprocessError):
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=4)
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"temperature command failed ({cmd[0]}): {e}", file=sys.stderr)
             return 0
-        m = re.search(r"-?\d+(?:\.\d+)?", out)
-        return int(float(m.group())) if m else 0
+        if proc.returncode != 0:
+            err = proc.stderr.strip() or proc.stdout.strip()
+            print(f"temperature command failed ({cmd[0]}): {err}", file=sys.stderr)
+            return 0
+        try:
+            payload = json.loads(proc.stdout.strip().splitlines()[-1])
+            temp = int(float(payload["temp"]["cpu_temp_avg"]))
+        except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return 0
+        return temp if temp > 0 else 0
     return read
+
+
+def _cmd_temp(cmd):
+    """Build a reader that runs `cmd` and parses the first positive number as °C."""
+    def read():
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"temperature command failed ({cmd[0]}): {e}", file=sys.stderr)
+            return 0
+        if proc.returncode != 0:
+            err = proc.stderr.strip() or proc.stdout.strip()
+            print(f"temperature command failed ({cmd[0]}): {err}", file=sys.stderr)
+            return 0
+        m = re.search(r"-?\d+(?:\.\d+)?", proc.stdout)
+        if not m:
+            return 0
+        temp = int(float(m.group()))
+        return temp if temp > 0 else 0
+    return read
+
+
+def _dedupe_commands(commands):
+    """Yield commands once while preserving priority order."""
+    seen = set()
+    for cmd in commands:
+        key = tuple(cmd)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        yield cmd
 
 
 def make_temp_reader():
@@ -119,18 +186,47 @@ def make_temp_reader():
 
     Linux uses psutil's sensors. macOS has no psutil sensor support, so it falls
     back to a CLI tool if installed (`osx-cpu-temp` or `istats`); otherwise temp
-    reports 0 and the rest of the stats stream normally.
+    reports 0 and the rest of the stats stream normally. Set SYSMON_TEMP_CMD to
+    override the macOS helper command.
     """
     system = platform.system()
     if system == "Linux":
         return _linux_temp
     if system == "Darwin":
-        if shutil.which("osx-cpu-temp"):        # `brew install osx-cpu-temp`
-            return _cmd_temp(["osx-cpu-temp"])
-        if shutil.which("istats"):              # `gem install iStats`
-            return _cmd_temp(["istats", "cpu", "temp", "--value-only"])
-        print("no macOS CPU temp source (install osx-cpu-temp or istats); "
-              "TMP will report 0", file=sys.stderr)
+        configured = os.environ.get("SYSMON_TEMP_CMD", "").strip()
+        candidates = [tuple(shlex.split(configured))] if configured else []
+        candidates.extend(MACMON_COMMANDS)
+        candidates.extend(MAC_TEMP_COMMANDS)
+
+        found = []
+        tried = set()
+        for candidate in _dedupe_commands(candidates):
+            cmd = _cmd_path(candidate)
+            if not cmd:
+                continue
+            key = tuple(cmd)
+            if key in tried:
+                continue
+            tried.add(key)
+            found.append(" ".join(cmd))
+            if os.path.basename(cmd[0]) == "macmon":
+                reader = _macmon_temp(cmd)
+            else:
+                reader = _cmd_temp(cmd)
+            if reader() > 0:
+                print(f"using macOS CPU temp source: {' '.join(cmd)}",
+                      file=sys.stderr)
+                return reader
+
+        if found:
+            print("macOS CPU temp helpers were found but returned no valid "
+                  f"temperature ({'; '.join(found)}); TMP will report 0",
+                  file=sys.stderr)
+        else:
+            print("no macOS CPU temp source found (install macmon, "
+                  "osx-cpu-temp, or iStats, or set SYSMON_TEMP_CMD); "
+                  "TMP will report 0",
+                  file=sys.stderr)
     return lambda: 0
 
 
