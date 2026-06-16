@@ -48,8 +48,8 @@ CPU:42,MEM:67,TMP:58,RX:1234,TX:88\n
 
 ## Host agent
 
-The agent runs on **Linux and macOS**. It auto-detects the board by USB VID
-`0x303A` (Espressif) and reconnects automatically if the board is
+The agent runs on **Linux, macOS, and Windows**. It auto-detects the board by USB
+VID `0x303A` (Espressif) and reconnects automatically if the board is
 unplugged/replugged.
 
 ```sh
@@ -75,6 +75,15 @@ first):
 cp host/usb-sysmon.service ~/.config/systemd/user/
 systemctl --user enable --now usb-sysmon.service
 ```
+
+### Windows
+
+CPU, memory, network, and serial output work through `psutil` and `pyserial`.
+CPU temperature is read from LibreHardwareMonitor's WMI namespace, with
+OpenHardwareMonitor as a compatible fallback.
+
+Start LibreHardwareMonitor before running the agent. If `TMP` stays 0, run
+LibreHardwareMonitor as Administrator and confirm its WMI interface is enabled.
 
 ### macOS
 

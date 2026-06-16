@@ -47,6 +47,31 @@ MAC_TEMP_COMMANDS = (
     ("/usr/local/bin/istats", "cpu", "temp", "--value-only"),
     ("/opt/local/bin/istats", "cpu", "temp", "--value-only"),
 )
+WINDOWS_TEMP_SCRIPT = r"""
+$namespaces = @('root\LibreHardwareMonitor', 'root\OpenHardwareMonitor')
+foreach ($ns in $namespaces) {
+    try {
+        $sensors = Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction Stop |
+            Where-Object {
+                $_.SensorType -eq 'Temperature' -and
+                ($_.Identifier -match '/(intelcpu|amdcpu|cpu)/' -or
+                 $_.Name -match 'CPU|Package|Tctl|Tdie|Core')
+            }
+        if ($sensors) {
+            $sensor = $sensors |
+                Sort-Object `
+                    @{ Expression = { if ($_.Name -match 'Package|Tctl|Tdie|CPU') { 0 } else { 1 } } }, `
+                    @{ Expression = 'Value'; Descending = $true } |
+                Select-Object -First 1
+            [Console]::Out.WriteLine(([double]$sensor.Value).ToString(
+                [Globalization.CultureInfo]::InvariantCulture))
+            exit 0
+        }
+    } catch {
+    }
+}
+exit 1
+"""
 
 
 # --------------------------------------------------------------------------- #
@@ -196,6 +221,26 @@ def _cmd_temp(cmd):
     return read
 
 
+def _windows_temp_reader():
+    """CPU temperature in °C on Windows via Libre/OpenHardwareMonitor WMI."""
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    if not shell:
+        print("no Windows PowerShell found; TMP will report 0", file=sys.stderr)
+        return lambda: 0
+
+    reader = _cmd_temp([shell, "-NoProfile", "-ExecutionPolicy", "Bypass",
+                        "-Command", WINDOWS_TEMP_SCRIPT])
+    if reader() > 0:
+        print("using Windows CPU temp source: Libre/OpenHardwareMonitor WMI",
+              file=sys.stderr)
+        return reader
+
+    print("no Windows CPU temp source found; start LibreHardwareMonitor with "
+          "WMI enabled (or OpenHardwareMonitor); TMP will report 0",
+          file=sys.stderr)
+    return lambda: 0
+
+
 def _dedupe_commands(commands):
     """Yield commands once while preserving priority order."""
     seen = set()
@@ -218,6 +263,8 @@ def make_temp_reader():
     system = platform.system()
     if system == "Linux":
         return _linux_temp
+    if system == "Windows":
+        return _windows_temp_reader()
     if system == "Darwin":
         configured = os.environ.get("SYSMON_TEMP_CMD", "").strip()
         candidates = [tuple(shlex.split(configured))] if configured else []
