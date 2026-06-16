@@ -13,9 +13,13 @@ The agent auto-detects the board by USB VID (Espressif, 0x303A) and survives the
 board being unplugged/replugged via a reconnect loop.
 """
 
+import re
 import sys
 import time
+import shutil
+import platform
 import argparse
+import subprocess
 
 import psutil
 import serial
@@ -87,14 +91,47 @@ def open_serial():
 # --------------------------------------------------------------------------- #
 # Stats sampling
 # --------------------------------------------------------------------------- #
-def cpu_temp():
-    """CPU temperature in °C; handles Intel (coretemp) and AMD (k10temp)."""
+def _linux_temp():
+    """CPU temperature in °C on Linux; handles Intel (coretemp) and AMD (k10temp)."""
     try:
         t = psutil.sensors_temperatures()
     except (AttributeError, OSError):
         return 0
     src = t.get("coretemp") or t.get("k10temp")
     return int(src[0].current) if src else 0
+
+
+def _cmd_temp(cmd):
+    """Build a reader that runs `cmd` and parses the first number as °C."""
+    def read():
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True,
+                                 timeout=2).stdout
+        except (OSError, subprocess.SubprocessError):
+            return 0
+        m = re.search(r"-?\d+(?:\.\d+)?", out)
+        return int(float(m.group())) if m else 0
+    return read
+
+
+def make_temp_reader():
+    """Pick a CPU-temperature backend once, based on the host OS.
+
+    Linux uses psutil's sensors. macOS has no psutil sensor support, so it falls
+    back to a CLI tool if installed (`osx-cpu-temp` or `istats`); otherwise temp
+    reports 0 and the rest of the stats stream normally.
+    """
+    system = platform.system()
+    if system == "Linux":
+        return _linux_temp
+    if system == "Darwin":
+        if shutil.which("osx-cpu-temp"):        # `brew install osx-cpu-temp`
+            return _cmd_temp(["osx-cpu-temp"])
+        if shutil.which("istats"):              # `gem install iStats`
+            return _cmd_temp(["istats", "cpu", "temp", "--value-only"])
+        print("no macOS CPU temp source (install osx-cpu-temp or istats); "
+              "TMP will report 0", file=sys.stderr)
+    return lambda: 0
 
 
 def main():
@@ -110,6 +147,7 @@ def main():
         print("GPU requested but no NVIDIA GPU / pynvml available; skipping",
               file=sys.stderr)
 
+    read_temp = make_temp_reader()
     ser = open_serial()
     psutil.cpu_percent(None)                # prime: first call always returns 0
     last = psutil.net_io_counters()
@@ -118,7 +156,7 @@ def main():
         time.sleep(args.interval)
         cpu = int(psutil.cpu_percent(None))
         mem = int(psutil.virtual_memory().percent)
-        tmp = cpu_temp()
+        tmp = read_temp()
         now = psutil.net_io_counters()
         rx = max(0, (now.bytes_recv - last.bytes_recv)) // 1024
         tx = max(0, (now.bytes_sent - last.bytes_sent)) // 1024

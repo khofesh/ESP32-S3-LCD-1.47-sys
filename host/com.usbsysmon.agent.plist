@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS launchd user agent (the equivalent of usb-sysmon.service on Linux).
+
+  Edit the sysmon.py path below to wherever this repo lives, then:
+      cp host/com.usbsysmon.agent.plist ~/Library/LaunchAgents/
+      launchctl load ~/Library/LaunchAgents/com.usbsysmon.agent.plist
+  Unload with:
+      launchctl unload ~/Library/LaunchAgents/com.usbsysmon.agent.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.usbsysmon.agent</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>python3</string>
+        <string>/Users/CHANGE_ME/usb-sysmon/host/sysmon.py</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>3</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/usb-sysmon.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/usb-sysmon.err.log</string>
+</dict>
+</plist>

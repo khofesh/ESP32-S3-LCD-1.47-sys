@@ -46,33 +46,54 @@ CPU:42,MEM:67,TMP:58,RX:1234,TX:88\n
 - `RX`, `TX` — network throughput, KB/s
 - `GPU` — optional GPU utilisation % (NVIDIA, with `--gpu`)
 
-## Host agent (Fedora)
+## Host agent
 
-1. Install deps:
-   ```sh
-   cd host && pip install -r requirements.txt
-   ```
-2. Add yourself to `dialout` so the serial port can be opened, then **re-login**:
-   ```sh
-   sudo usermod -aG dialout $USER
-   ```
-3. Run it:
+The agent runs on **Linux and macOS**. It auto-detects the board by USB VID
+`0x303A` (Espressif) and reconnects automatically if the board is
+unplugged/replugged.
 
-   ```sh
-   python3 host/sysmon.py            # core fields
-   python3 host/sysmon.py --gpu      # also stream GPU% if an NVIDIA GPU is present
-   ```
+```sh
+cd host && pip install -r requirements.txt
+python3 sysmon.py            # core fields
+python3 sysmon.py --gpu      # also stream GPU% if an NVIDIA GPU is present
+```
 
-   The agent auto-detects the board by USB VID `0x303A` (Espressif) and
-   reconnects automatically if the board is unplugged/replugged.
+### Linux (Fedora)
 
-   To auto-start it, install the user service (edit `ExecStart` to this repo's
-   path first):
+Add yourself to `dialout` so the serial port can be opened, then **re-login**:
 
-   ```sh
-   cp host/usb-sysmon.service ~/.config/systemd/user/
-   systemctl --user enable --now usb-sysmon.service
-   ```
+```sh
+sudo usermod -aG dialout $USER
+```
+
+CPU temperature comes from `psutil` sensors (Intel `coretemp` / AMD `k10temp`).
+
+Auto-start with the systemd `--user` unit (edit `ExecStart` to this repo's path
+first):
+
+```sh
+cp host/usb-sysmon.service ~/.config/systemd/user/
+systemctl --user enable --now usb-sysmon.service
+```
+
+### macOS
+
+No `dialout` step — the board appears as `/dev/cu.usbmodem*` and opens without
+extra permissions. `psutil` has no temperature sensors on macOS, so the agent
+reads CPU temp from a CLI helper if one is installed, otherwise `TMP` reports 0
+(all other stats stream normally):
+
+```sh
+brew install osx-cpu-temp     # or: gem install iStats
+```
+
+Auto-start with the `launchd` agent (edit the `sysmon.py` path inside the plist
+first):
+
+```sh
+cp host/com.usbsysmon.agent.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.usbsysmon.agent.plist
+```
 
 ## Firmware
 
