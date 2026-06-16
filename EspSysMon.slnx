@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/host/" />
+  <Folder Name="/host/windows/">
+    <Project Path="host/windows/SysmonWindowsAgent/SysmonWindowsAgent.csproj" />
+  </Folder>
+</Solution>
