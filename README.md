@@ -26,6 +26,7 @@ See `CLAUDE.md` for the full spec.
 └── host/               # Python host agent
     ├── sysmon.py
     ├── requirements.txt
+    ├── windows/        # standalone .NET Windows host agent
     └── usb-sysmon.service   # systemd --user unit
 ```
 
@@ -78,14 +79,17 @@ systemctl --user enable --now usb-sysmon.service
 
 ### Windows
 
-CPU, memory, network, and serial output work through `psutil` and `pyserial`.
-CPU temperature is read from LibreHardwareMonitor's WMI namespace, with
-OpenHardwareMonitor as a compatible fallback.
+Use the standalone .NET 10 agent for Windows. It streams the same serial
+protocol as `host/sysmon.py`, but reads CPU temperature directly through
+`LibreHardwareMonitorLib` instead of relying on WMI:
 
-Start LibreHardwareMonitor before running the agent. If `TMP` stays 0, run
-LibreHardwareMonitor as Administrator and confirm its WMI interface is enabled.
-The Windows temperature reader polls WMI in the background, so the first few
-samples can show `TMP:0` before the initial query completes.
+```powershell
+cd host\windows\SysmonWindowsAgent
+dotnet run
+```
+
+If `TMP` stays 0, run the terminal as Administrator so the library can access the
+hardware sensors. See `host/windows/README.md` for publish commands and options.
 
 ### macOS
 

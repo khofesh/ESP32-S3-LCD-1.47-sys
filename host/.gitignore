@@ -76,6 +76,10 @@ docs/_build/
 .pybuilder/
 target/
 
+# .NET
+bin/
+obj/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
