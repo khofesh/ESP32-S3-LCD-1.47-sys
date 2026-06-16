@@ -30,17 +30,17 @@ microSD (SDMMC-capable), one WS2812 RGB LED, native USB on a **Type-A male** plu
 
 **Pinout (verified from the Waveshare wiki) — do not reassign these:**
 
-| Function | GPIO |
-|---|---|
-| LCD MOSI | 45 |
-| LCD SCLK | 40 |
-| LCD CS | 42 |
-| LCD DC | 41 |
-| LCD RST | 39 |
-| LCD BL (backlight) | 48 |
+| Function                         | GPIO                        |
+| -------------------------------- | --------------------------- |
+| LCD MOSI                         | 45                          |
+| LCD SCLK                         | 40                          |
+| LCD CS                           | 42                          |
+| LCD DC                           | 41                          |
+| LCD RST                          | 39                          |
+| LCD BL (backlight)               | 48                          |
 | SD CLK / CMD / D0 / D1 / D2 / D3 | 14 / 15 / 16 / 18 / 17 / 21 |
-| RGB LED (WS2812, 1 pixel) | 38 |
-| Native USB D− / D+ | 19 / 20 |
+| RGB LED (WS2812, 1 pixel)        | 38                          |
+| Native USB D− / D+               | 19 / 20                     |
 
 Free GPIOs (4–13) are available but this project needs none of them.
 
@@ -174,6 +174,7 @@ WantedBy=default.target
 Install: `systemctl --user enable --now usb-sysmon.service`.
 
 **Host gotchas (must handle):**
+
 - The user must be in the `dialout` group (`sudo usermod -aG dialout $USER`, then re-login) or the port open fails with permission denied. Document this in the README.
 - CPU temperature sensor key differs by vendor: `coretemp` (Intel) vs `k10temp` (AMD). Handle both (done above).
 - `psutil.cpu_percent()` returns 0 on its first call — prime it once before the loop.
@@ -276,7 +277,7 @@ void loop() {
 ### Firmware constraints (must follow)
 
 - **LVGL is not thread-safe.** This design keeps serial reading and `lv_timer_handler()`
-  in the *same* `loop()`, so widgets are only touched from one context — keep it that
+  in the _same_ `loop()`, so widgets are only touched from one context — keep it that
   way. If you ever move serial reading into a separate task/core, you **must** guard all
   `lv_*` calls with a mutex (or LVGL 9's `lv_lock`/`lv_unlock`).
 - **Reuse the vendor display init.** The ST7789 here is a 172-wide panel sitting in a
@@ -289,6 +290,7 @@ void loop() {
 ### ESP-IDF alternative
 
 If using ESP-IDF instead of Arduino:
+
 - Replace `Serial` with the `usb_serial_jtag` driver
   (`usb_serial_jtag_driver_install()` + `usb_serial_jtag_read_bytes()` into the same
   line buffer).
