@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Darwin
 
 struct StatsSample {
     let cpu: Int
@@ -167,12 +168,20 @@ func findSerialPort() -> String? {
     return "\(devPath)/\(first)"
 }
 
-func writeLine(_ line: String, to fileHandle: FileHandle) {
+func writeLine(_ line: String, to fileHandle: FileHandle) -> Bool {
     guard let data = "\(line)\n".data(using: .utf8) else {
-        return
+        return false
     }
-    
-    fileHandle.write(data)
+
+    let written: Int = data.withUnsafeBytes { buffer in
+        guard let baseAddress = buffer.baseAddress else {
+            return -1
+        }
+
+        return Darwin.write(fileHandle.fileDescriptor, baseAddress, data.count)
+    }
+
+    return written == data.count
 }
 
 func configureSerialPort(_ fileHandle: FileHandle) -> Bool {
@@ -195,6 +204,26 @@ func configureSerialPort(_ fileHandle: FileHandle) -> Bool {
     return tcsetattr(fd, TCSANOW, &options) == 0
 }
 
+func openSerialPort() -> FileHandle? {
+    guard let port = findSerialPort() else {
+        print("serial port not found")
+        return nil
+    }
+
+    guard let serial = FileHandle(forWritingAtPath: port) else {
+        print("could not open serial port: \(port)")
+        return nil
+    }
+
+    guard configureSerialPort(serial) else {
+        print("could not configure serial port: \(port)")
+        return nil
+    }
+
+    print("found serial port: \(port)")
+    return serial
+}
+
 @MainActor
 func readStatsSample() -> StatsSample {
     let net = networkThroughput()
@@ -208,30 +237,21 @@ func readStatsSample() -> StatsSample {
     )
 }
 
-guard let port = findSerialPort() else {
-    print("serial port not found")
+@MainActor
+func streamSamples(to serial: FileHandle, count: Int) {
+    for _ in 1...count {
+        let sample = readStatsSample()
+        let line = sample.protocolLine()
+
+        print(line)
+        writeLine(line, to: serial)
+
+        Thread.sleep(forTimeInterval: 1.0)
+    }
+}
+
+guard let serial = openSerialPort() else {
     exit(1)
 }
 
-let serial = FileHandle(forWritingAtPath: port)
-guard let serial else {
-    print("could not open serial port: \(port)")
-    exit(1)
-}
-
-guard configureSerialPort(serial) else {
-    print("could not configure serial port: \(port)")
-    exit(1)
-}
-
-print("found serial port: \(port)")
-
-for _ in 1...10 {
-    let sample = readStatsSample()
-    let line = sample.protocolLine()
-    
-    print(line)
-    writeLine(line, to: serial)
-    
-    Thread.sleep(forTimeInterval: 1.0)
-}
+streamSamples(to: serial, count: 10)
