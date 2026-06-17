@@ -154,6 +154,27 @@ func memoryPercent() -> Int {
     return Int((Double(used) / Double(total)) * 100)
 }
 
+func findSerialPort() -> String? {
+    let devPath = "/dev"
+    
+    guard let entries = try? FileManager.default.contentsOfDirectory(atPath: devPath) else { return nil }
+    
+    let candidates = entries.filter { $0.hasPrefix("cu.usbmodem") || $0.hasPrefix("cu.SLAB_USBtoUART") }
+        .sorted()
+    
+    guard let first = candidates.first else { return nil }
+    
+    return "\(devPath)/\(first)"
+}
+
+func writeLine(_ line: String, to fileHandle: FileHandle) {
+    guard let data = "\(line)\n".data(using: .utf8) else {
+        return
+    }
+    
+    fileHandle.write(data)
+}
+
 @MainActor
 func readStatsSample() -> StatsSample {
     let net = networkThroughput()
@@ -167,8 +188,25 @@ func readStatsSample() -> StatsSample {
     )
 }
 
+guard let port = findSerialPort() else {
+    print("serial port not found")
+    exit(1)
+}
+
+let serial = FileHandle(forWritingAtPath: port)
+guard let serial else {
+    print("could not open serial port: \(port)")
+    exit(1)
+}
+
+print("found serial port: \(port)")
+
 for _ in 1...10 {
     let sample = readStatsSample()
-    print(sample.protocolLine())
+    let line = sample.protocolLine()
+    
+    print(line)
+    writeLine(line, to: serial)
+    
     Thread.sleep(forTimeInterval: 1.0)
 }
