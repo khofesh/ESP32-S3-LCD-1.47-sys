@@ -238,20 +238,31 @@ func readStatsSample() -> StatsSample {
 }
 
 @MainActor
-func streamSamples(to serial: FileHandle, count: Int) {
-    for _ in 1...count {
+func streamSamples(to serial: FileHandle) {
+    while true {
         let sample = readStatsSample()
         let line = sample.protocolLine()
 
         print(line)
-        writeLine(line, to: serial)
+
+        guard writeLine(line, to: serial) else {
+            print("serial write failed")
+            return
+        }
 
         Thread.sleep(forTimeInterval: 1.0)
     }
 }
 
-guard let serial = openSerialPort() else {
-    exit(1)
-}
+while true {
+    guard let serial = openSerialPort() else {
+        Thread.sleep(forTimeInterval: 2.0)
+        continue
+    }
 
-streamSamples(to: serial, count: 10)
+    streamSamples(to: serial)
+    serial.closeFile()
+
+    print("reconnecting in 2 seconds...")
+    Thread.sleep(forTimeInterval: 2.0)
+}
