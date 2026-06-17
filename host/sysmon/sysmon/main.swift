@@ -175,6 +175,26 @@ func writeLine(_ line: String, to fileHandle: FileHandle) {
     fileHandle.write(data)
 }
 
+func configureSerialPort(_ fileHandle: FileHandle) -> Bool {
+    let fd = fileHandle.fileDescriptor
+    var options = termios()
+    
+    guard tcgetattr(fd, &options) == 0 else {
+        return false
+    }
+    
+    cfmakeraw(&options)
+    cfsetspeed(&options, speed_t(B115200))
+    
+    options.c_cflag |= tcflag_t(CLOCAL | CREAD)
+    options.c_cflag &= ~tcflag_t(CSTOPB)
+    options.c_cflag &= ~tcflag_t(PARENB)
+    options.c_cflag &= ~tcflag_t(CSIZE)
+    options.c_cflag |= tcflag_t(CS8)
+    
+    return tcsetattr(fd, TCSANOW, &options) == 0
+}
+
 @MainActor
 func readStatsSample() -> StatsSample {
     let net = networkThroughput()
@@ -196,6 +216,11 @@ guard let port = findSerialPort() else {
 let serial = FileHandle(forWritingAtPath: port)
 guard let serial else {
     print("could not open serial port: \(port)")
+    exit(1)
+}
+
+guard configureSerialPort(serial) else {
+    print("could not configure serial port: \(port)")
     exit(1)
 }
 
