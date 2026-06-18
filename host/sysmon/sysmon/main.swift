@@ -81,10 +81,15 @@ func cpuPercent() -> Int {
 struct NetworkBytes {
     let rx: UInt64
     let tx: UInt64
+    let sampledAt: TimeInterval
 }
 
 var previousNetworkBytes: NetworkBytes?
 let temperatureReader = TemperatureReader()
+
+if !temperatureReader.isAvailable {
+    print("temperature sensors unavailable; TMP will report 0")
+}
 
 func readNetworkBytes() -> NetworkBytes {
     var interfaces: UnsafeMutablePointer<ifaddrs>?
@@ -92,7 +97,7 @@ func readNetworkBytes() -> NetworkBytes {
     var tx: UInt64 = 0
     
     guard getifaddrs(&interfaces) == 0 else {
-        return NetworkBytes(rx: 0, tx: 0)
+        return NetworkBytes(rx: 0, tx: 0, sampledAt: Date.timeIntervalSinceReferenceDate)
     }
     
     var pointer = interfaces
@@ -111,7 +116,7 @@ func readNetworkBytes() -> NetworkBytes {
     
     freeifaddrs(interfaces)
     
-    return NetworkBytes(rx: rx, tx: tx)
+    return NetworkBytes(rx: rx, tx: tx, sampledAt: Date.timeIntervalSinceReferenceDate)
 }
 
 @MainActor

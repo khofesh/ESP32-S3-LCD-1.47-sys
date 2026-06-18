@@ -191,6 +191,9 @@ private final class HIDTemperatureReader {
 
 final class TemperatureReader {
     private let hidReader: HIDTemperatureReader?
+    var isAvailable: Bool {
+        cpuTemperatureCelsius() != nil
+    }
     
     init() {
         hidReader = HIDTemperatureReader()
