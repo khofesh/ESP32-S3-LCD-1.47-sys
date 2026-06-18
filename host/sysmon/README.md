@@ -18,18 +18,37 @@ are unavailable, the agent keeps running and reports `TMP:0`.
 
 ## Build and run with Swift Package Manager
 
-From this directory:
+From the repository root:
 
 ```sh
+cd host/sysmon
 swift build
 swift run sysmon
 ```
 
-For an optimized binary:
+`swift build` creates a debug executable at:
+
+```text
+host/sysmon/.build/debug/sysmon
+```
+
+Run it directly with:
+
+```sh
+.build/debug/sysmon
+```
+
+For an optimized release executable:
 
 ```sh
 swift build -c release
 .build/release/sysmon
+```
+
+The release executable is located at:
+
+```text
+host/sysmon/.build/release/sysmon
 ```
 
 The agent prefers serial devices whose USB registry reports Espressif vendor ID
@@ -39,6 +58,8 @@ unplug or write failure.
 
 ## Test
 
+Run all tests from `host/sysmon`:
+
 ```sh
 swift test
 ```
@@ -46,15 +67,47 @@ swift test
 The tests cover protocol formatting, CPU delta calculation, elapsed-time network
 rates, counter resets, and overflow handling.
 
+### See and run tests in Xcode
+
+The tests belong to the Swift package and do not appear when
+`sysmon.xcodeproj` is opened directly. Open `Package.swift` instead:
+
+```sh
+xed host/sysmon/Package.swift
+```
+
+Or use **File → Open** in Xcode and select:
+
+```text
+host/sysmon/Package.swift
+```
+
+In Xcode's Project navigator, expand:
+
+```text
+Tests
+└── sysmonTests
+    └── ModelsTests.swift
+```
+
+Run the tests with **Product → Test** or press **Command-U**.
+
 ## Build with Xcode
 
-Open:
+To work only with the executable Xcode project, open:
 
 ```text
 host/sysmon/sysmon.xcodeproj
 ```
 
-The Xcode target and Swift package share the files in `host/sysmon/sysmon/`.
+The Xcode target and Swift package share the source files in
+`host/sysmon/sysmon/`, but the standalone Xcode project does not define the
+Swift package's test target.
+
+Select the `sysmon` scheme and choose **Product → Build** or press
+**Command-B**. The executable appears in Xcode's Derived Data directory. To
+locate it, expand **Products** in the Project navigator, right-click `sysmon`,
+and choose **Show in Finder**.
 
 For a command-line Xcode build without code signing:
 
