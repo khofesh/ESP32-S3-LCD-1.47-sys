@@ -74,6 +74,14 @@ private struct TemperatureReading {
 
 private final class HIDTemperatureReader {
     private let client: IOHIDEventSystemClientRef
+    private lazy var services = copyHIDEventSystemServices(client)
+    private lazy var processorServices = sensorServices().filter {
+        guard let name = sensorName(for: $0) else {
+            return false
+        }
+
+        return TemperatureReading(name: name, celsius: 0).isProcessorDie
+    }
     
     init?() {
         guard let client = createHIDEventSystemClient(nil) else {
@@ -92,7 +100,7 @@ private final class HIDTemperatureReader {
     }
     
     private func sensorServices() -> [IOHIDServiceClientRef] {
-        guard let services = copyHIDEventSystemServices(client) else {
+        guard let services else {
             return []
         }
 
@@ -151,41 +159,14 @@ private final class HIDTemperatureReader {
         return value
     }
     
-    private func readings() -> [TemperatureReading] {
-        var result: [TemperatureReading] = []
-        
-        for service in sensorServices() {
-            guard let name = sensorName(for: service),
-                  let celsius = temperature(for: service) else {
-                continue
-            }
-            
-            result.append(
-                TemperatureReading(
-                    name: name,
-                    celsius: celsius
-                )
-            )
-        }
-        
-        return result
-    }
-    
     func averageProcessorTemperature() -> Double? {
-        let processorReadings = readings().filter(\.isProcessorDie)
-        
-        guard !processorReadings.isEmpty else {
+        let temperatures = processorServices.compactMap(temperature)
+
+        guard !temperatures.isEmpty else {
             return nil
         }
-        
-        let total = processorReadings.reduce(0.0) {
-            partialResult,
-            reading in
-            
-            partialResult + reading.celsius
-        }
-        
-        return total / Double(processorReadings.count)
+
+        return temperatures.reduce(0, +) / Double(temperatures.count)
     }
 }
 
