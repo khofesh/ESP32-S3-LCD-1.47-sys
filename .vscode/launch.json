@@ -5,6 +5,26 @@
       "type": "espidf",
       "name": "Launch",
       "request": "launch"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:ESP32-S3-LCD-1.47-sys}/host/sysmon",
+      "name": "Debug sysmon (host/sysmon)",
+      "target": "sysmon",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug sysmon (host/sysmon)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:ESP32-S3-LCD-1.47-sys}/host/sysmon",
+      "name": "Release sysmon (host/sysmon)",
+      "target": "sysmon",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release sysmon (host/sysmon)"
     }
   ]
 }

@@ -8,10 +8,11 @@ over its USB Type-A plug and shows live host stats on its 172×320 LCD:
 - **RX / TX** network throughput
 - the onboard **RGB LED** shifts green → red with CPU load
 
-A small Python agent on the host samples the stats with `psutil` and streams one
-line per second to the board over the native USB CDC serial link. If the host
-stops sending, the board greys the gauges and shows **"waiting for host"** within
-~3 s, then recovers automatically when data resumes.
+A small host agent samples the stats and streams one line per second to the
+board over the native USB CDC serial link. Linux uses Python, macOS has a native
+Swift agent, and Windows has a .NET agent. If the host stops sending, the board
+greys the gauges and shows **"waiting for host"** within ~3 s, then recovers
+automatically when data resumes.
 
 See `CLAUDE.md` for the full spec.
 
@@ -23,9 +24,10 @@ See `CLAUDE.md` for the full spec.
 │   └── Sysmon/         # the system-monitor module: USB link + LVGL UI
 │       ├── sysmon.c
 │       └── sysmon.h
-└── host/               # Python host agent
+└── host/               # host agents
     ├── sysmon.py
     ├── requirements.txt
+    ├── sysmon/         # native Swift macOS agent and Swift package
     ├── windows/        # standalone .NET Windows host agent
     └── usb-sysmon.service   # systemd --user unit
 ```
@@ -93,42 +95,19 @@ hardware sensors. See `host/windows/README.md` for publish commands and options.
 
 ### macOS
 
-No `dialout` step — the board appears as `/dev/cu.usbmodem*` and opens without
-extra permissions. `psutil` has no temperature sensors on macOS, so the agent
-reads CPU temp from a CLI helper if one is installed, otherwise `TMP` reports 0
-(all other stats stream normally).
-
-On Apple Silicon, use `macmon`; it reports average CPU temperature without sudo:
+Use the native Swift agent. It reads Apple Silicon processor-die temperatures
+directly through macOS HID services, with no Python packages or CLI temperature
+helper:
 
 ```sh
-brew install macmon
+cd host/sysmon
+swift run sysmon
 ```
 
-Intel Macs can use `osx-cpu-temp` or `iStats`:
-
-```sh
-brew install osx-cpu-temp     # or: gem install iStats
-```
-
-Homebrew installs are checked in the normal shell `PATH` plus the common
-`/opt/homebrew/bin`, `/usr/local/bin`, and `/opt/local/bin` locations, so the
-same helper should also be found when the script is started by `launchd`. You can
-override the helper with `SYSMON_TEMP_CMD`, for example:
-
-```sh
-SYSMON_TEMP_CMD="/opt/homebrew/bin/macmon pipe -i 1000" python3 host/sysmon.py
-```
-
-If `osx-cpu-temp` prints `0.0°C`, it is not a usable temperature source on that
-machine. The agent treats that as unavailable and tries the next helper.
-
-Auto-start with the `launchd` agent (edit the `sysmon.py` path inside the plist
-first):
-
-```sh
-cp host/com.usbsysmon.agent.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.usbsysmon.agent.plist
-```
+No `dialout` step is needed. Serial discovery prefers the Espressif USB vendor
+ID and falls back to common `/dev/cu.usb*` device names. See
+`host/sysmon/README.md` for release builds, tests, Xcode, `launchd`, and hardware
+verification.
 
 ## Firmware
 

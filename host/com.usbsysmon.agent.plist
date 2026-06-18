@@ -4,11 +4,12 @@
 <!--
   macOS launchd user agent (the equivalent of usb-sysmon.service on Linux).
 
-  Edit the sysmon.py path below to wherever this repo lives, then:
+  Build the Swift agent and copy it to ~/.local/bin/usb-sysmon, then replace
+  CHANGE_ME below with your macOS username:
       cp host/com.usbsysmon.agent.plist ~/Library/LaunchAgents/
-      launchctl load ~/Library/LaunchAgents/com.usbsysmon.agent.plist
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.usbsysmon.agent.plist
   Unload with:
-      launchctl unload ~/Library/LaunchAgents/com.usbsysmon.agent.plist
+      launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.usbsysmon.agent.plist
 -->
 <plist version="1.0">
 <dict>
@@ -17,9 +18,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/env</string>
-        <string>python3</string>
-        <string>/Users/CHANGE_ME/usb-sysmon/host/sysmon.py</string>
+        <string>/Users/CHANGE_ME/.local/bin/usb-sysmon</string>
     </array>
 
     <key>RunAtLoad</key>
