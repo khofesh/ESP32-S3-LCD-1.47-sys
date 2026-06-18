@@ -8,10 +8,21 @@
 import Foundation
 import IOKit
 
+// CPU temperature has no public macOS API, so this reads it through the
+// private IOHIDEventSystem framework — the same source Apple's own tools use.
+// On Apple Silicon the relevant sensors expose a processor-die temperature; on
+// Intel Macs these HID sensors are usually absent, so reads return nil and the
+// agent reports TMP:0. Because these symbols are private, they can change
+// between macOS releases; treat unavailability as expected, not exceptional.
+
 typealias IOHIDEventSystemClientRef = OpaquePointer
 typealias IOHIDServiceClientRef = OpaquePointer
 typealias IOHIDEventRef = OpaquePointer
 
+// Sensor matching keys: Apple's vendor-defined HID usage page (0xff00) plus
+// the temperature-sensor usage (0x05). temperatureEventType (15) is
+// kIOHIDEventTypeTemperature, used both to request the event and to derive its
+// value field.
 private let appleVendorUsagePage: Int32 = 0xff00
 private let temperatureSensorUsage: Int32 = 0x0005
 private let temperatureEventType: Int64 = 15
@@ -64,16 +75,22 @@ private func temperatureSensorMatching() -> CFDictionary {
 private struct TemperatureReading {
     let name: String
     let celsius: Double
-    
+
+    // Apple Silicon exposes many thermal sensors; the PMU "tdie" ones track
+    // the processor die itself. Matching by name keeps us off GPU/battery/etc.
     var isProcessorDie: Bool {
         let normalizedName = name.lowercased()
-        
+
         return normalizedName.hasPrefix("pmu") && normalizedName.contains("tdie")
     }
 }
 
+/// Holds an IOHIDEventSystem client and resolves the processor-die sensors
+/// once, then averages their temperatures on demand.
 private final class HIDTemperatureReader {
     private let client: IOHIDEventSystemClientRef
+    // Resolved lazily and cached: the set of matching sensors doesn't change
+    // over the process lifetime, so we only walk the service list once.
     private lazy var services = copyHIDEventSystemServices(client)
     private lazy var processorServices = sensorServices().filter {
         guard let name = sensorName(for: $0) else {
@@ -94,6 +111,8 @@ private final class HIDTemperatureReader {
     }
     
     deinit {
+        // The client came from a "Create" call (+1 retain), so balance it
+        // here. CF types reached via @_silgen_name aren't ARC-managed for us.
         Unmanaged<AnyObject>
             .fromOpaque(UnsafeRawPointer(client))
             .release()
@@ -159,6 +178,8 @@ private final class HIDTemperatureReader {
         return value
     }
     
+    /// Mean of the current processor-die readings, or nil if none are present
+    /// or readable (e.g. on Intel Macs).
     func averageProcessorTemperature() -> Double? {
         let temperatures = processorServices.compactMap(temperature)
 
@@ -170,12 +191,16 @@ private final class HIDTemperatureReader {
     }
 }
 
+/// Public-facing temperature source. Wraps the private HID reader and rounds
+/// to whole degrees Celsius for the integer line protocol.
 final class TemperatureReader {
     private let hidReader: HIDTemperatureReader?
+    // Note: this performs a live sensor read, not a cheap flag check. The
+    // agent only queries it once at startup, so the cost is immaterial.
     var isAvailable: Bool {
         cpuTemperatureCelsius() != nil
     }
-    
+
     init() {
         hidReader = HIDTemperatureReader()
     }

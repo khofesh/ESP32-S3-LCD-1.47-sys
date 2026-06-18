@@ -1,8 +1,13 @@
+// Reads live CPU, memory, temperature, and network stats from the kernel and
+// folds them into a StatsSample. Holds the previous CPU/network counters so
+// rates can be computed as deltas between consecutive samples.
 import Darwin
 import Foundation
 
 @MainActor
 final class SystemSampler {
+    // Baselines for the rate calculations; nil until the first sample primes
+    // them (or after resetBaselines on reconnect).
     private var previousCPUTicks: CPUTicks?
     private var previousNetworkBytes: NetworkBytes?
     private let temperatureReader = TemperatureReader()
@@ -11,6 +16,8 @@ final class SystemSampler {
         temperatureReader.isAvailable
     }
 
+    /// Clears the rate baselines so the next sample reports 0 instead of a
+    /// delta spanning a disconnect. Called on every (re)connect.
     func resetBaselines() {
         previousCPUTicks = nil
         previousNetworkBytes = nil
@@ -33,6 +40,8 @@ final class SystemSampler {
             return 0
         }
 
+        // Always store the new snapshot as the next baseline, even on the
+        // first call where we have nothing to diff against yet.
         defer {
             previousCPUTicks = current
         }
@@ -59,8 +68,12 @@ final class SystemSampler {
     }
 }
 
+/// Reads aggregate (all-core) CPU tick counters via the Mach host_statistics
+/// API. Returns nil if the kernel call fails.
 private func readCPUTicks() -> CPUTicks? {
     var info = host_cpu_load_info()
+    // host_statistics wants the buffer size measured in integer_t units, so
+    // express the struct's size as a count of integer_t fields.
     var count = mach_msg_type_number_t(
         MemoryLayout<host_cpu_load_info>.stride /
         MemoryLayout<integer_t>.stride
@@ -92,6 +105,9 @@ private func readCPUTicks() -> CPUTicks? {
     )
 }
 
+/// Sums RX/TX byte counters across all non-loopback link-layer interfaces.
+/// Uses systemUptime (a monotonic clock) so rate math is immune to wall-clock
+/// adjustments.
 private func readNetworkBytes() -> NetworkBytes {
     let sampledAt = ProcessInfo.processInfo.systemUptime
     var interfaces: UnsafeMutablePointer<ifaddrs>?
@@ -112,6 +128,8 @@ private func readNetworkBytes() -> NetworkBytes {
         let interface = current.pointee
         pointer = interface.ifa_next
 
+        // Only AF_LINK entries carry if_data byte counters; skip loopback so
+        // local traffic doesn't inflate the throughput shown on the board.
         guard let address = interface.ifa_addr,
               address.pointee.sa_family == UInt8(AF_LINK),
               interface.ifa_flags & UInt32(IFF_LOOPBACK) == 0,
@@ -130,6 +148,12 @@ private func readNetworkBytes() -> NetworkBytes {
     return NetworkBytes(rx: rx, tx: tx, sampledAt: sampledAt)
 }
 
+/// Memory usage as a 0–100 percent of physical RAM.
+///
+/// "Used" is defined as active + wired + compressed pages — roughly what
+/// Activity Monitor shows as in-use memory. Inactive/cached pages are treated
+/// as available. This leans slightly high since active includes cached file
+/// pages, which is acceptable for a glanceable gauge.
 private func memoryPercent() -> Int {
     var stats = vm_statistics64()
     var count = mach_msg_type_number_t(
