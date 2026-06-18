@@ -262,7 +262,10 @@ func streamSamples(to serial: FileHandle) {
     }
 }
 
+
+
 signal(SIGPIPE, SIG_IGN)
+printDebugHIDReadings()
 
 while true {
     guard let serial = openSerialPort() else {
