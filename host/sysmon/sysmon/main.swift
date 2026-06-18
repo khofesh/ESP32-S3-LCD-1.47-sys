@@ -84,6 +84,7 @@ struct NetworkBytes {
 }
 
 var previousNetworkBytes: NetworkBytes?
+let temperatureReader = TemperatureReader()
 
 func readNetworkBytes() -> NetworkBytes {
     var interfaces: UnsafeMutablePointer<ifaddrs>?
@@ -227,14 +228,21 @@ func openSerialPort() -> FileHandle? {
 @MainActor
 func readStatsSample() -> StatsSample {
     let net = networkThroughput()
+    let temperature = temperatureReader.cpuTemperatureCelsius() ?? 0
     
     return StatsSample(
         cpu: cpuPercent(),
         memory: memoryPercent(),
-        temperature: 58,
+        temperature: temperature,
         rx: net.rx,
         tx: net.tx
     )
+}
+
+@MainActor
+func resetSampleBaselines() {
+    previousCPUTicks = nil
+    previousNetworkBytes = nil
 }
 
 @MainActor
@@ -254,12 +262,15 @@ func streamSamples(to serial: FileHandle) {
     }
 }
 
+signal(SIGPIPE, SIG_IGN)
+
 while true {
     guard let serial = openSerialPort() else {
         Thread.sleep(forTimeInterval: 2.0)
         continue
     }
 
+    resetSampleBaselines()
     streamSamples(to: serial)
     serial.closeFile()
 
