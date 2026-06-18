@@ -68,7 +68,7 @@ private struct TemperatureReading {
     var isProcessorDie: Bool {
         let normalizedName = name.lowercased()
         
-        return normalizedName.hasPrefix("pmu") || normalizedName.contains("tdie")
+        return normalizedName.hasPrefix("pmu") && normalizedName.contains("tdie")
     }
 }
 
@@ -180,12 +180,32 @@ private final class HIDTemperatureReader {
             )
         }
     }
+    
+    func averageProcessorTemperature() -> Double? {
+        let processorReadings = readings().filter(\.isProcessorDie)
+        
+        guard !processorReadings.isEmpty else {
+            return nil
+        }
+        
+        let total = processorReadings.reduce(0.0) {
+            partialResult,
+            reading in
+            
+            partialResult + reading.celsius
+        }
+        
+        return total / Double(processorReadings.count)
+    }
 }
 
 @MainActor
 func printDebugHIDReadings() {
     let reader = HIDTemperatureReader()
-    reader?.printReadings()
+
+    if let average = reader?.averageProcessorTemperature() {
+        print(String(format: "Average CPU: %.1f°C", average))
+    }
 }
 
 private func findSMCService() -> io_service_t? {
@@ -378,17 +398,18 @@ private final class SMCConnection {
 }
 
 final class TemperatureReader {
-    private let smcConnection: SMCConnection?
+    private let hidReader: HIDTemperatureReader?
     
     init() {
-        smcConnection = SMCConnection()
+        hidReader = HIDTemperatureReader()
     }
     
     func cpuTemperatureCelsius() -> Int? {
-        guard smcConnection != nil else {
+        guard let temperature =
+                hidReader?.averageProcessorTemperature() else {
             return nil
         }
-        
-        return nil
+
+        return Int(temperature.rounded())
     }
 }
