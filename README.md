@@ -131,3 +131,7 @@ If flashing fails, enter download mode: hold **BOOT**, tap **RESET**, release
 - Serial reading, parsing, widget updates, and the RGB LED are all driven from a
   single LVGL timer in the same context as `lv_timer_handler()`, so no LVGL
   locking is required.
+
+### images
+
+![sample](./images/6172288215822307652.jpg)
